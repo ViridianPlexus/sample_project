@@ -1,0 +1,323 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix Digital Rain</title>
+    
+</head>
+<body>
+
+
+
+
+
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: black;
+    overflow: hidden;
+  }
+
+  /* 🔹 MATRIX BACKGROUND */
+  #Matrix {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1;
+  }
+
+  /* 🔹 CENTERED IFRAME LAYER */
+  #viewer {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+
+    width: 800px;
+    height: 500px;
+
+    border: 2px solid #FC1212;
+    box-shadow: 0 0 20px #FC1212;
+
+    z-index: 2; /* above canvas */
+    background: black;
+  }
+</style>
+
+<style>
+  #gameCard {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+
+    width: 600px;
+    padding: 30px;
+
+    background: rgba(0, 0, 0, 0.85);
+    border: 2px solid #FC1212;
+    box-shadow: 0 0 25px #FC1212;
+
+    z-index: 5;
+
+    font-family: monospace;
+    color: #FC1212;
+    text-align: center;
+  }
+
+  #prompt {
+    font-size: 18px;
+    margin-bottom: 20px;
+  }
+
+  #answerBox {
+    width: 80%;
+    padding: 10px;
+    font-size: 18px;
+
+    background: black;
+    border: 1px solid #FC1212;
+    color: #FC1212;
+    outline: none;
+    text-align: center;
+  }
+
+  #status {
+    margin-top: 15px;
+    font-size: 14px;
+    opacity: 0.8;
+  }
+</style>
+
+  <!-- This is your "display running function" target -->
+  <iframe id="viewer"></iframe>
+
+
+
+
+<div id="gameCard">
+  <div id="prompt">Loading...</div>
+  <input id="answerBox" type="text" autocomplete="off" />
+  <div id="status"></div>
+</div>
+
+    <canvas id="Matrix"></canvas>
+
+    <script>
+        const canvas = document.getElementById('Matrix');
+        const context = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const korean = "ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎㅏㅑㅓㅕㅗㅛㅜㅠㅡㅣ";
+        const latin = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÇÁÂÃÀÇÉÈÊËÍÎÏÑÓÔÕÚÙÛÜŸŒ';
+        const nums = '0123456789';
+        const arabiby = "ابتثجحخدذرزسشصضطظعغفقكلمنهوي";
+        const cyrillic = "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ";
+
+        const alphabet = korean + latin + nums + arabiby + cyrillic;
+
+        const fontSize = 16;
+        let columns = canvas.width / fontSize;
+
+        const rainDrops = [];
+
+        for (let x = 0; x < columns; x++) {
+            rainDrops[x] = 1;
+        }
+
+        const draw = () => {
+            // Using black with low opacity to create the fade/trail effect
+            context.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+
+            context.fillStyle = '#FC1212';
+            context.font = fontSize + 'px monospace';
+
+            for (let i = 0; i < rainDrops.length; i++) {
+                const text = alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+                context.fillText(text, i * fontSize, rainDrops[i] * fontSize);
+
+                if (rainDrops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                    rainDrops[i] = 0;
+                }
+                rainDrops[i]++;
+            }
+        };
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            // Note: If you want to handle column recalculation on resize, 
+            // you'd re-initialize the rainDrops array here.
+        });
+
+        setInterval(draw, 30);
+    </script>
+
+    <script>
+      // 🔥 SAMPLE DATA (replace later with your WordNet file)
+let nouns = [];
+
+async function loadWords() {
+  const res = await fetch("wordnet.json");
+  nouns = await res.json();
+
+  loadProgress();   // restore saved scores
+  nextWord();       // start game
+}
+
+
+function saveProgress() {
+  try {
+    const filtered = nouns
+      .filter(w => w.correct > 0 || w.wrong > 0)
+      .map(w => ({
+        word: w.word,
+        correct: w.correct,
+        wrong: w.wrong,
+        score: w.score,
+        difficulty: w.difficulty
+      }));
+
+    localStorage.setItem("wordGameData", JSON.stringify(filtered));
+  } catch (e) {
+    console.warn("Storage full, skipping save");
+  }
+}
+
+
+function pickWord() {
+  // lower score + lower correct = more likely
+  const weights = nouns.map(w => {
+    const mastery = w.correct - w.wrong;
+    return 1 / (1 + mastery + w.difficulty);
+  });
+
+  const total = weights.reduce((a, b) => a + b, 0);
+
+  let r = Math.random() * total;
+
+  for (let i = 0; i < nouns.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return nouns[i];
+  }
+
+  return nouns[0];
+}
+
+function loadProgress() {
+  const saved = localStorage.getItem("wordGameData");
+  if (!saved) return;
+
+  const parsed = JSON.parse(saved);
+
+  // merge saved values into fresh JSON
+  nouns.forEach((word, i) => {
+    const match = parsed.find(p => p.word === word.word);
+    if (match) {
+      nouns[i] = match;
+    }
+  });
+}
+
+let index = 0;
+let currentWord = null;
+let wrongAttempts = 0; // 👈 add this
+
+// DOM
+const prompt = document.getElementById("prompt");
+const input = document.getElementById("answerBox");
+const status = document.getElementById("status");
+
+// 🔥 Hide the answer in the definition
+function makeQuestion(def, word) {
+  const regex = new RegExp(word, "gi");
+  return def.replace(regex, "_____");
+}
+
+// 🔥 Load next noun
+function nextWord() {
+currentWord = pickWord();
+ wrongAttempts = 0; // 👈 reset here
+  prompt.textContent = makeQuestion(
+  currentWord.defs.join(" "),
+  currentWord.word
+);
+  input.value = "";
+  status.textContent = "";
+
+  input.focus();
+
+
+
+
+}
+
+// 🔥 Check answer
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+
+    
+
+    const val = input.value.trim().toUpperCase();
+
+    if (val === currentWord.word.toUpperCase()) {
+
+  currentWord.correct++;
+  currentWord.score += 1 / currentWord.difficulty;
+  currentWord.difficulty *= 1.05;
+
+  status.textContent = "✔ CORRECT";
+
+  saveProgress();
+
+  setTimeout(() => {
+    next();
+  }, 800);
+
+} else {
+
+  wrongAttempts++; // 👈 track tries
+
+  currentWord.wrong++;
+  currentWord.score -= 1;
+  currentWord.difficulty *= 0.90;
+
+  if (wrongAttempts >= 3) {
+    status.textContent = `✖ WRONG (3x) — answer: ${currentWord.word}`;
+    saveProgress();
+    setTimeout(next, 1200); // move on after reveal
+  } else {
+    status.textContent = `✖ WRONG (${wrongAttempts}/3)`;
+  }
+
+}
+
+
+
+    
+  }
+});
+
+// 🔥 Advance
+function next() {
+  // index = (index + 1) % nouns.length;
+  nextWord();
+}
+
+
+window.addEventListener("DOMContentLoaded", loadWords);
+// start game
+
+    </script>
+</body>
+</html>

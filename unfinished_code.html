@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+    
+    /* Shared control styling */
+    .control-group {
+      position: absolute;
+      bottom: 20px;
+      display: grid;
+      gap: 10px;
+      z-index: 999;
+    }
+
+    /* Left side (WASD) */
+    #wasd-controls {
+      left: 20px;
+      grid-template-areas: 
+        ". w ."
+        "a s d";
+    }
+
+    /* Right side (Arrows) */
+    #arrow-controls {
+      right: 20px;
+      grid-template-areas: 
+        ". up ."
+        "left down right";
+    }
+
+    .key {
+      width: 45px;
+      height: 45px;
+      background: rgba(255, 165, 0, 0.15);
+      border: 1px solid orange;
+      color: orange;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      user-select: none;
+      font-weight: bold;
+      font-size: 14px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .key:active {
+      background: rgba(255, 165, 0, 0.5);
+    }
+
+    /* Mapping areas */
+    #w { grid-area: w; } #a { grid-area: a; } #s { grid-area: s; } #d { grid-area: d; }
+    #up { grid-area: up; } #left { grid-area: left; } #down { grid-area: down; } #right { grid-area: right; }
+
+
+    #perf-monitor {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.8);
+    color: #00ff00;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 12px;
+    border: 1px solid #444;
+    pointer-events: none;
+    z-index: 1000;
+}
+
+#bottom-controls {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+
+  display: flex;
+  gap: 10px;
+  z-index: 1000;
+}
+  
+#node-info {
+  position: absolute;
+  top: 140px; /* sits under GPU monitor */
+  right: 10px;
+
+  width: 320px;
+  max-width: 90vw;
+
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid orange;
+  border-radius: 10px;
+  padding: 12px 14px;
+
+  color: orange;
+  z-index: 1000;
+
+  font-family: sans-serif;
+  display: none;
+}
+
+#node-title {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+#node-definition {
+  font-size: 13px;
+  line-height: 1.4;
+  color: #ffd27a;
+}
+
+#search-controls {
+  position: absolute;
+  top: 90px;   /* below GPU monitor */
+  right: 10px;
+
+  display: flex;
+  gap: 6px;
+  z-index: 1000;
+}
+
+#node-search {
+  width: 220px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid orange;
+  background: rgba(0,0,0,0.8);
+  color: orange;
+  outline: none;
+}
+
+#search-btn {
+  width: 38px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 1px solid orange;
+  border-radius: 6px;
+  color: orange;
+  cursor: pointer;
+  user-select: none;
+}
+
+#search-btn:active {
+  background: rgba(255,165,0,0.3);
+}
+
+
+  </style>
+</head>
+
+<body>
+  <div id="perf-monitor">
+    <div>GPU draw calls: <span id="draw-calls">0</span></div>
+    <div>GPU memory: <span id="gpu-mem">0</span> MB</div>
+    <div>Geometries: <span id="geo-count">0</span></div>
+</div>
+
+<div id="search-controls">
+  <input id="node-search" type="text" placeholder="Search word..." />
+  <div id="search-btn">🔍</div>
+</div>
+
+  <div id="wasd-controls" class="control-group">
+    <div class="key" id="w">W</div>
+    <div class="key" id="a">A</div>
+    <div class="key" id="s">S</div>
+    <div class="key" id="d">D</div>
+  </div>
+
+  <div id="arrow-controls" class="control-group">
+    <div class="key" id="up">▲</div>
+    <div class="key" id="left">◀</div>
+    <div class="key" id="down">▼</div>
+    <div class="key" id="right">▶</div>
+  </div>
+
+<div id="bottom-controls">
+  <div class="key" id="prev">◀ Prev</div>
+  <div class="key" id="auto-nav">AUTO</div>
+  <div class="key" id="next">Next ▶</div>
+</div>
+
+  <div id="3d-graph"></div>
+
+<div id="node-info">
+  <div id="node-title"></div>
+  <div id="node-definition"></div>
+</div>
+
+
+<script type="module">
+  import ForceGraph3D from 'https://esm.sh/3d-force-graph';
+  import SpriteText from 'https://esm.sh/three-spritetext';
+
+  // Simulation engine
+  function simulateKey(code, type) {
+    const event = new KeyboardEvent(type, {
+      code: code,
+      key: code,
+      bubbles: true
+    });
+    window.dispatchEvent(event);
+  }
+
+  // Key mappings
+  const keyMap = {
+    'w': 'KeyW', 'a': 'KeyA', 's': 'KeyS', 'd': 'KeyD',
+    'up': 'ArrowUp', 'down': 'ArrowDown', 'left': 'ArrowLeft', 'right': 'ArrowRight'
+  };
+  
+  Object.keys(keyMap).forEach(id => {
+    const el = document.getElementById(id);
+    ['mousedown', 'touchstart'].forEach(evt => 
+      el.addEventListener(evt, (e) => { e.preventDefault(); simulateKey(keyMap[id], 'keydown'); })
+    );
+    ['mouseup', 'touchend', 'touchcancel'].forEach(evt => 
+      el.addEventListener(evt, (e) => { e.preventDefault(); simulateKey(keyMap[id], 'keyup'); })
+    );
+  });
+
+  async function loadData() {
+    try {
+      const response = await fetch("all_transformed.txt");
+      //all_transformed.txt
+      //transformed_dictionary.txt
+      const text = await response.text();
+      const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+      const nodes = [];
+      const links = [];
+
+      lines.forEach((line) => {
+        const match = line.match(/^([^\s]+)\s+(.*)$/);
+        if (match) {
+          const word = match[1].replace(/[:.,]/g, "");
+          const definition = match[2].trim();
+          nodes.push({ id: word, definition: definition });
+          if (nodes.length > 1) {
+            links.push({ source: nodes[nodes.length - 2].id, target: word });
+          }
+        }
+      });
+      return { nodes, links };
+    } catch (err) {
+      console.error("Fetch error:", err);
+      return { nodes: [], links: [] };
+    }
+  }
+
+loadData().then(baseData => {
+  const Graph = ForceGraph3D({ controlType: 'fly' })(document.getElementById("3d-graph"));
+
+  let sortedNodes = [];
+  let currentIndex = 0;
+
+  const graphData = {
+    nodes: [],
+    links: []
+  };
+
+  Graph.graphData(graphData)
+    .enableNodeDrag(false)
+    .warmupTicks(50)
+    .cooldownTicks(0)
+
+    .nodeThreeObject(node => {
+      const sprite = new SpriteText(node.id);
+      sprite.color = "orange";
+      sprite.textHeight = 8;
+      return sprite;
+    })
+    .nodeThreeObjectExtend(true)
+    .nodeLabel(node => `<b>${node.id}</b>: ${node.definition}`)
+
+    .onNodeClick(node => {
+      stopAutoNav();
+      currentIndex = sortedNodes.findIndex(n => n.id === node.id);
+      focusNode(node);
+    });
+
+  Graph.d3Force("charge").strength(-200);
+
+  // -------------------------------
+  // 🔥 LOAD PROGRESS FROM GAME
+  // -------------------------------
+  function getAttemptedWords() {
+    const saved = localStorage.getItem("wordGameData");
+    if (!saved) return [];
+
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return [];
+    }
+  }
+
+  function findBaseWord(word) {
+    return baseData.nodes.find(n => n.id === word);
+  }
+
+  function addNode(wordObj) {
+    if (graphData.nodes.find(n => n.id === wordObj.word)) return;
+
+    const base = findBaseWord(wordObj.word);
+    if (!base) return;
+
+    const node = {
+      id: base.id,
+      definition: base.definition,
+      correct: wordObj.correct,
+      wrong: wordObj.wrong,
+      score: wordObj.score,
+      difficulty: wordObj.difficulty
+    };
+
+    graphData.nodes.push(node);
+
+    // optional linking: connect to previous node
+    if (graphData.nodes.length > 1) {
+      const prev = graphData.nodes[graphData.nodes.length - 2];
+      graphData.links.push({
+        source: prev.id,
+        target: node.id
+      });
+    }
+
+    Graph.graphData(graphData); // update render
+  }
+
+  function rebuildGraphFromMemory() {
+    const attempted = getAttemptedWords();
+
+    graphData.nodes.length = 0;
+    graphData.links.length = 0;
+
+    attempted.forEach(addNode);
+
+    sortedNodes = [...graphData.nodes].sort((a, b) =>
+      a.id.localeCompare(b.id)
+    );
+  }
+
+  // -------------------------------
+  // 🔥 LIVE SYNC (IMPORTANT PART)
+  // -------------------------------
+  function watchGameMemory() {
+    setInterval(() => {
+      rebuildGraphFromMemory();
+    }, 2000); // sync every 2 sec
+  }
+
+  rebuildGraphFromMemory();
+  watchGameMemory();
+
+  // -------------------------------
+  // KEEP REST OF YOUR CODE
+  // -------------------------------
+
+</script>
+
+</body>
+</html>
