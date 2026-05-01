@@ -1,0 +1,327 @@
+id like a multiple choice version:
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix Digital Rain</title>
+    
+</head>
+<body>
+
+
+
+
+
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: black;
+    overflow: hidden;
+  }
+
+  /* 🔹 MATRIX BACKGROUND */
+  #Matrix {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1;
+  }
+
+  /* 🔹 CENTERED IFRAME LAYER */
+  #viewer {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+
+    width: 800px;
+    height: 500px;
+
+    border: 2px solid #FC1212;
+    box-shadow: 0 0 20px #FC1212;
+
+    z-index: 2; /* above canvas */
+    background: black;
+  }
+</style>
+
+<style>
+  #gameCard {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+
+    width: 600px;
+    padding: 30px;
+
+    background: rgba(0, 0, 0, 0.85);
+    border: 2px solid #FC1212;
+    box-shadow: 0 0 25px #FC1212;
+
+    z-index: 5;
+
+    font-family: monospace;
+    color: #FC1212;
+    text-align: center;
+  }
+
+  #prompt {
+    font-size: 18px;
+    margin-bottom: 20px;
+  }
+
+  #answerBox {
+    width: 80%;
+    padding: 10px;
+    font-size: 18px;
+
+    background: black;
+    border: 1px solid #FC1212;
+    color: #FC1212;
+    outline: none;
+    text-align: center;
+  }
+
+  #status {
+    margin-top: 15px;
+    font-size: 14px;
+    opacity: 0.8;
+  }
+</style>
+
+  <!-- This is your "display running function" target -->
+  <iframe id="viewer"></iframe>
+
+
+
+
+<!-- REPLACE your #gameCard HTML with this -->
+<div id="gameCard">
+  <div id="prompt">Loading...</div>
+
+  <div id="choices"></div>
+
+  <div id="status"></div>
+</div>
+
+    <canvas id="Matrix"></canvas>
+
+    <script>
+        const canvas = document.getElementById('Matrix');
+        const context = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const korean = "ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎㅏㅑㅓㅕㅗㅛㅜㅠㅡㅣ";
+        const latin = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÇÁÂÃÀÇÉÈÊËÍÎÏÑÓÔÕÚÙÛÜŸŒ';
+        const nums = '0123456789';
+        const arabiby = "ابتثجحخدذرزسشصضطظعغفقكلمنهوي";
+        const cyrillic = "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ";
+
+        const alphabet = korean + latin + nums + arabiby + cyrillic;
+
+        const fontSize = 16;
+        let columns = canvas.width / fontSize;
+
+        const rainDrops = [];
+
+        for (let x = 0; x < columns; x++) {
+            rainDrops[x] = 1;
+        }
+
+        const draw = () => {
+            // Using black with low opacity to create the fade/trail effect
+            context.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+
+            context.fillStyle = '#FC1212';
+            context.font = fontSize + 'px monospace';
+
+            for (let i = 0; i < rainDrops.length; i++) {
+                const text = alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+                context.fillText(text, i * fontSize, rainDrops[i] * fontSize);
+
+                if (rainDrops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                    rainDrops[i] = 0;
+                }
+                rainDrops[i]++;
+            }
+        };
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            // Note: If you want to handle column recalculation on resize, 
+            // you'd re-initialize the rainDrops array here.
+        });
+
+        setInterval(draw, 30);
+    </script>
+
+ <script>
+let nouns = [];
+
+async function loadWords() {
+  const res = await fetch("wordnet.json");
+  nouns = await res.json();
+
+  loadProgress();
+  nextWord();
+}
+
+function saveProgress() {
+  try {
+    const filtered = nouns
+      .filter(w => w.correct > 0 || w.wrong > 0)
+      .map(w => ({
+        word: w.word,
+        correct: w.correct,
+        wrong: w.wrong,
+        score: w.score,
+        difficulty: w.difficulty
+      }));
+
+    localStorage.setItem("wordGameData", JSON.stringify(filtered));
+  } catch (e) {
+    console.warn("Storage full, skipping save");
+  }
+}
+
+function pickWord() {
+  const weights = nouns.map(w => {
+    const mastery = w.correct - w.wrong;
+    return 1 / (1 + mastery + w.difficulty);
+  });
+
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+
+  for (let i = 0; i < nouns.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return nouns[i];
+  }
+
+  return nouns[0];
+}
+
+function loadProgress() {
+  const saved = localStorage.getItem("wordGameData");
+  if (!saved) return;
+
+  const parsed = JSON.parse(saved);
+
+  nouns.forEach((word, i) => {
+    const match = parsed.find(p => p.word === word.word);
+    if (match) nouns[i] = match;
+  });
+}
+
+let currentWord = null;
+let wrongAttempts = 0;
+
+const prompt = document.getElementById("prompt");
+const choices = document.getElementById("choices");
+const status = document.getElementById("status");
+
+function makeQuestion(def, word) {
+  return def.replace(new RegExp(word, "gi"), "_____");
+}
+
+/* 🔥 generate multiple choice answers */
+function generateChoices(correctWord) {
+  const options = new Set();
+  options.add(correctWord);
+
+  while (options.size < 4) {
+    const random = nouns[Math.floor(Math.random() * nouns.length)].word;
+    options.add(random);
+  }
+
+  return Array.from(options).sort(() => Math.random() - 0.5);
+}
+
+function renderChoices(options) {
+  choices.innerHTML = "";
+
+  options.forEach(opt => {
+    const btn = document.createElement("button");
+    btn.textContent = opt;
+
+    btn.style = `
+      display:block;
+      width:100%;
+      margin:8px 0;
+      padding:10px;
+      font-size:16px;
+      background:black;
+      border:1px solid #FC1212;
+      color:#FC1212;
+      cursor:pointer;
+    `;
+
+    btn.onclick = () => checkAnswer(opt);
+    choices.appendChild(btn);
+  });
+}
+
+function nextWord() {
+  currentWord = pickWord();
+  wrongAttempts = 0;
+
+  prompt.textContent = makeQuestion(
+    currentWord.defs.join(" "),
+    currentWord.word
+  );
+
+  status.textContent = "";
+
+  const options = generateChoices(currentWord.word);
+  renderChoices(options);
+}
+
+function checkAnswer(val) {
+  if (val.toUpperCase() === currentWord.word.toUpperCase()) {
+
+    currentWord.correct++;
+    currentWord.score += 1 / currentWord.difficulty;
+    currentWord.difficulty *= 1.05;
+
+    status.textContent = "✔ CORRECT";
+    saveProgress();
+
+    setTimeout(nextWord, 800);
+
+  } else {
+
+    wrongAttempts++;
+
+    currentWord.wrong++;
+    currentWord.score -= 1;
+    currentWord.difficulty *= 0.90;
+
+    if (wrongAttempts >= 3) {
+      status.textContent = `✖ WRONG (3x) — answer: ${currentWord.word}`;
+      saveProgress();
+      setTimeout(nextWord, 1200);
+    } else {
+      status.textContent = `✖ WRONG (${wrongAttempts}/3)`;
+    }
+  }
+}
+
+window.addEventListener("DOMContentLoaded", loadWords);
+</script>
+</body>
+</html>
